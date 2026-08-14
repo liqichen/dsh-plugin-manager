@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor
+.vscode/
+.idea/
+
+# Playwright 临时截图
+.playwright-mcp/
+
+# 本地配置备份(不应入库)
+*.bak-*
