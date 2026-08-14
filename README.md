@@ -2,7 +2,7 @@
 
 # 🧩 DSH 插件管理器
 
-**dsh-plugin-manager** — 在 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 设置面板里内嵌的图形化管理器,让你像操作普通 App 一样管理 **MCP 服务 / Skills / 内置插件包**,开关、删除实时热生效,**无需重启 dsh web**。
+**dsh-plugin-manager** — 在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 设置面板里内嵌的图形化管理器,让你像操作普通 App 一样管理 **MCP 服务 / Skills / 内置插件包**,开关、删除实时热生效,**无需重启 dsh web**。
 
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
