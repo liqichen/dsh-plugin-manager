@@ -175,6 +175,17 @@ python3 legacy/server.py --port 17891
 
 ---
 
+## 🛠️ 用 DSH 开发(吃自己的狗粮)
+
+本项目**就是用 DeepSeek Harness 开发出来的** —— 从想法到上线,整个开发过程由运行在 DSH 里的 AI 编码智能体完成:
+
+- 通过 DSH 的 MCP 工具(浏览器自动化、文件读写等)逆向研究官方双端插件的扫描与注入机制(`dsh-client-modules`、`dsh-cordis-host-runner`、`settings.section` slot 契约)
+- 直接读写 `cordis.patch.yml` / `~/.dsh/skills/` 反复实验,验证「配置改动 → 宿主 HMR 热生效」链路
+- 用 Playwright / Chrome DevTools 自动化截图、检查 UI 效果
+- 最终产物又作为标准 DSH 插件被安装回 DSH,用来管理 DSH 自己 —— **DSH 管理 DSH 自己**
+
+这正是 DeepSeek Harness 的设计哲学:**Everything is a Plugin**。
+
 ## 🗂️ 目录结构
 
 ```

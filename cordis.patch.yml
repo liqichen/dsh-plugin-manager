@@ -1,0 +1,6 @@
+# dsh-plugin-manager bundle patch
+# Registers the node half (index.js) with the host cordis runtime.
+# The browser half is picked up automatically via dsh.client.inject in package.json.
+- insert:
+    - id: plugin-manager-ui
+      name: dsh-plugin-manager

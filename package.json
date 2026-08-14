@@ -1,8 +1,7 @@
 {
   "name": "dsh-plugin-manager",
   "version": "0.1.0",
-  "private": true,
-  "description": "DSH plugin manager settings section (MCP / skills / plugin packages), backed by a local python service on 127.0.0.1:17891",
+  "description": "GUI in the DSH settings panel: toggle/delete MCP servers, browse and trash skills, list built-in plugin packages — hot-applied without restart.",
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -11,6 +10,9 @@
     "./package.json": "./package.json"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "inject": [
@@ -19,5 +21,10 @@
         "@deepseek-ai/dsh-client-ui-settings"
       ]
     }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-client-runtime": "*",
+    "@deepseek-ai/dsh-client-locale": "*",
+    "@deepseek-ai/dsh-client-ui-settings": "*"
   }
 }
