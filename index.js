@@ -20,7 +20,10 @@ export const inject = ["webServer"];
 
 const HOME = homedir();
 const PATCH_FILE = join(HOME, ".dsh/profiles/web/cordis.patch.yml");
-const SKILLS_DIR = join(HOME, ".dsh/skills");
+const SKILLS_DIRS = [
+  join(HOME, ".dsh/skills"),
+  join(HOME, ".agents/skills"), // 通用 agents skills 目录
+];
 const PLUGINS_DIR = join(HOME, ".dsh/profiles/node_modules/@deepseek-ai");
 
 /* ---------------- cordis.patch.yml 行级解析 ---------------- */
@@ -86,9 +89,10 @@ function deleteMcp(id) {
 /* ---------------- skills / plugins ---------------- */
 
 function listSkills() {
-  if (!existsSync(SKILLS_DIR)) return [];
-  return readdirSync(SKILLS_DIR).sort().flatMap((name) => {
-    const d = join(SKILLS_DIR, name);
+  return SKILLS_DIRS.flatMap((skillsDir) => {
+    if (!existsSync(skillsDir)) return [];
+    return readdirSync(skillsDir).sort().flatMap((name) => {
+    const d = join(skillsDir, name);
     if (!statSync(d).isDirectory() || name.startsWith(".trash-")) return [];
     let desc = "";
     const md = join(d, "SKILL.md");
@@ -100,15 +104,21 @@ function listSkills() {
       } catch {}
     }
     return [{ name, desc: desc.length > 160 ? desc.slice(0, 160) + "…" : desc, path: d }];
+    });
   });
 }
 
 function deleteSkill(name) {
   if (!/^[\w.\-]+$/.test(name)) return [false, "非法名称"];
-  const d = join(SKILLS_DIR, name);
-  if (!existsSync(d)) return [false, "找不到 skill: " + name];
+  let d = null;
+  for (const dir of SKILLS_DIRS) {
+    const c = join(dir, name);
+    if (existsSync(c) && statSync(c).isDirectory()) { d = c; break; }
+  }
+  if (!d) return [false, "找不到 skill: " + name];
+  const dir = d.slice(0, d.lastIndexOf("/"));
   const ts = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
-  const trash = join(SKILLS_DIR, ".trash-" + ts + "-" + name);
+  const trash = join(dir, ".trash-" + ts + "-" + name);
   renameSync(d, trash); // 不真删,可恢复
   return [true, "已移除 " + name + "(移入 " + trash.split("/").pop() + ",可手动恢复)"];
 }
@@ -129,7 +139,7 @@ function listPlugins() {
 function getState() {
   const entries = parseMcpEntries(readFileSync(PATCH_FILE, "utf8"));
   for (const e of entries) { delete e.start; delete e.end; delete e.disabledLine; }
-  return { mcp: entries, skills: listSkills(), plugins: listPlugins(), patchFile: PATCH_FILE, skillsDir: SKILLS_DIR };
+  return { mcp: entries, skills: listSkills(), plugins: listPlugins(), patchFile: PATCH_FILE, skillsDir: SKILLS_DIRS.filter(existsSync).join("  ·  ") };
 }
 
 /* ---------------- HTTP ---------------- */
