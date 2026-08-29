@@ -67,19 +67,19 @@ cp -r dsh-plugin-manager/{index.js,client.js,lib,package.json,cordis.patch.yml} 
 # 2. 通过 dsh CLI 注册插件(依赖安装走 pnpm,Node 端即可解析)
 dsh plugin --profile web add ~/.dsh/plugins/dsh-plugin-manager
 
-# 3. 在 patch 文件(见下)追加插件条目:
-#    - insert:
-#        - id: plugin-manager-ui
-#          name: dsh-plugin-manager
-
-# 4. 重启 dsh web,打开「设置」→「插件管理」即可使用
+# 3. 重启 dsh web,打开「设置」→「插件管理」即可使用
 ```
 
-> **patch 文件位置(0.1.2-alpha.1)**:插件探测 `$DSH_HOME/profiles/web/cordis.patch.yml`(web
-> profile 用户层)与 `$DSH_HOME/cordis.patch.yml`(home 用户层,机器级),取第一个存在的。
-> alpha.1 的 patch 文件必须是「顶层 YAML 数组的 loader patch entries」(`- insert:` 操作符 /
-> id-targeted override),不能像 rc.2 时代那样直接写 `- id:` + `name` 条目(非 insert patch
-> 只覆盖已存在行,会被 loader 跳过并告警)。
+> **alpha.1 不需要手动加插件条目**:`dsh plugin add` 后,插件的 bundle patch
+> (`package.json` 的 `dsh.bundle.patch` → `cordis.patch.yml`)会自动成为 profile 的
+> patch 层并注册「插件管理」设置页。若再在用户 patch 里手动追加同名条目,会触发
+> `duplicate loader entry id` 启动失败。
+>
+> **patch 文件位置**:插件探测 `$DSH_HOME/profiles/<当前profile>/cordis.patch.yml`
+> (当前 profile 用户层,优先)与 `$DSH_HOME/cordis.patch.yml`(home 用户层,机器级)。
+> alpha.1 的 patch 文件必须是「顶层 YAML 数组的 loader patch entries」(`- insert:`
+> 操作符 / id-targeted override),不能像 rc.2 时代那样直接写 `- id:` + `name` 条目
+> (非 insert patch 只覆盖已存在行,会被 loader 跳过并告警)。
 
 ### 方式二:legacy 独立网页版(不依赖插件系统)
 
@@ -117,8 +117,9 @@ python3 legacy/server.py --port 17891
 v0.1.0 针对 rc.2 时代的 `~/.dsh/profiles/web/cordis.patch.yml` 布局,在 **0.1.2-alpha.1**
 上 MCP 页会直接 500(文件不存在)。v0.2.0 做了以下适配:
 
-1. **动态定位 patch 文件**:优先 web profile 用户层,其次 home 用户层(`$DSH_HOME/cordis.patch.yml`,
-   alpha.1 新增的机器级层);文件不存在时 MCP 列表返回空,不再 500。
+1. **动态定位 patch 文件**:优先当前 profile 用户层(`$DSH_HOME/profiles/<profile>/cordis.patch.yml`,
+   从进程 argv 反推 profile),其次 home 用户层(`$DSH_HOME/cordis.patch.yml`,alpha.1 新增的
+   机器级层);文件不存在时 MCP 列表返回空,不再 500。
 2. **重写 MCP 解析器**(`lib/patch.mjs`):识别 alpha.1 官方写法 —— `- insert:` 操作符里的
    `dsh-mcp-client` 实例 + 独立的 id-targeted override(禁用),两者按 id 合并;
    同时兼容显示 rc.2 时代的直接条目(便于清理无效配置)。
@@ -269,7 +270,7 @@ dsh-plugin-manager/
 2. **MCP 删除 ≠ 卸载包** —— 只删配置条目,包体仍在,重新配置即可恢复。
 3. **Skill 删除可恢复** —— 是「移入 `.trash-*`」而非真删。
 4. **热生效有边界** —— 配置实时生效,但已开会话的工具列表不自动刷新,请开新会话。
-5. **作用于 web profile 与 home 层** —— 探测 `$DSH_HOME/profiles/web/cordis.patch.yml` 与 `$DSH_HOME/cordis.patch.yml`(存在者优先);home 层改动会影响所有 profile。
+5. **作用于当前 profile 与 home 层** —— 探测 `$DSH_HOME/profiles/<当前profile>/cordis.patch.yml` 与 `$DSH_HOME/cordis.patch.yml`(存在者优先);home 层改动会影响所有 profile。
 
 ---
 
