@@ -97,7 +97,11 @@ window.__ModuleLoader__.load({
 
 			const load = React.useCallback(function () {
 				fetch(API + "/api/state").then(function (r) { return r.json(); })
-					.then(function (s) { setState(s); setError(null); })
+					.then(function (s) {
+						if (!s || s.ok === false) throw new Error((s && s.message) || "后端返回错误");
+						if (!Array.isArray(s.mcp)) throw new Error("state 结构异常(mcp 缺失)");
+						setState(s); setError(null);
+					})
 					.catch(function (e) { setError(String(e)); });
 			}, []);
 			React.useEffect(function () { load(); }, [load]);
@@ -126,7 +130,7 @@ window.__ModuleLoader__.load({
 
 			if (error) {
 				children.push(h("div", { key: "e", className: "pm-err" },
-					h("div", null, "插件后端未响应(同源 /plugin-manager/api)。后端已内嵌在 DSH 宿主里,请重启 dsh web 后重试。"),
+					h("div", null, "插件后端未响应或返回异常(" + String(error) + ")。后端已内嵌在 DSH 宿主里,请重启 dsh web 后重试。"),
 					h("br", null),
 					h("button", { className: "pm-retry", onClick: load }, "重试")));
 				return h("div", { className: "pm-wrap" }, children);
