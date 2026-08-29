@@ -4,10 +4,11 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { PATCH_CANDIDATES, collectMcp, toggleMcp, deleteMcp } from "../lib/patch.mjs";
+import { patchFile, collectMcp, toggleMcp, deleteMcp } from "../lib/patch.mjs";
 
+// 测试环境:DSH_HOME 指向临时目录,profile 由 argv 反推(测试进程默认 web)
 const TMP = join(process.cwd(), ".test-tmp");
-const FILE = join(TMP, "cordis.patch.yml");
+const FILE = join(TMP, "profiles", "web", "cordis.patch.yml");
 
 const SAMPLE = `# 测试 patch(模仿 alpha.1 用户层)
 # 第一个 MCP:insert 官方格式
@@ -37,14 +38,13 @@ const SAMPLE = `# 测试 patch(模仿 alpha.1 用户层)
 `;
 
 beforeEach(() => {
-  mkdirSync(TMP, { recursive: true });
+  process.env.DSH_HOME = TMP;
+  mkdirSync(join(TMP, "profiles", "web"), { recursive: true });
   writeFileSync(FILE, SAMPLE);
-  // 把候选路径指到测试副本
-  PATCH_CANDIDATES.length = 0;
-  PATCH_CANDIDATES.push(FILE);
 });
 
 afterEach(() => {
+  delete process.env.DSH_HOME;
   rmSync(TMP, { recursive: true, force: true });
 });
 
@@ -69,8 +69,8 @@ test("toggleMcp disable: 无 override 时追加 id-targeted override", () => {
   assert.match(text, /- id: mcp-http\s*\n\s+disabled: true/);
   const { mcp } = collectMcp(text);
   assert.equal(mcp.find((m) => m.id === "mcp-http").disabled, true);
-  // 备份已生成
-  assert.ok(readdirSync(TMP).some((f) => f.includes(".bak-")), "应生成 .bak- 备份");
+  // 备份已生成(与 patch 同目录)
+  assert.ok(readdirSync(join(TMP, "profiles", "web")).some((f) => f.includes(".bak-")), "应生成 .bak- 备份");
 });
 
 test("toggleMcp enable: 删除 override 条目与实例内 disabled 行", () => {
@@ -119,9 +119,14 @@ test("操作不存在的 id 返回错误", () => {
 });
 
 test("patch 文件不存在时返回明确错误而非抛异常", () => {
-  PATCH_CANDIDATES.length = 0;
-  PATCH_CANDIDATES.push(join(TMP, "missing.yml"));
+  rmSync(FILE, { force: true });
   const [ok, msg] = toggleMcp("mcp-http", true);
   assert.equal(ok, false);
   assert.match(msg, /patch 文件不存在/);
+});
+
+test("patchFile 探测:当前 profile 层存在时优先于 home 层", () => {
+  // 已有 web 层;再造一个 home 层,应仍返回 web 层
+  writeFileSync(join(TMP, "cordis.patch.yml"), "[]\n");
+  assert.equal(patchFile(), FILE);
 });
