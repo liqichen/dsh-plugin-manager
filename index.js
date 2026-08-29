@@ -8,80 +8,23 @@
  *   GET  /plugin-manager/api/state   → { mcp, skills, plugins, patchFile, skillsDir }
  *   POST /plugin-manager/api/action  → { kind: "mcp-toggle" | "mcp-delete" | "skill-delete", ... }
  *
- * 所有写操作先备份 cordis.patch.yml(.bak-时间戳),再改文件;
- * 宿主 HMR 监听 patch 文件,改动会实时热生效,无需重启。
+ * 配置定位与 patch 解析见 lib/patch.mjs(0.1.2-alpha.1 适配):
+ *   - 探测 web profile 用户层 / home 用户层,取第一个存在的
+ *   - MCP = dsh-mcp-client 插件实例(insert 格式),禁用 = id-targeted override
+ *   - 所有写操作先备份 .bak-<毫秒时间戳>,宿主 HMR 监听 patch 文件,改动实时热生效
  */
-import { readFileSync, writeFileSync, copyFileSync, readdirSync, existsSync, statSync, renameSync } from "node:fs";
+import { readdirSync, existsSync, statSync, renameSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { patchFile, collectMcp, toggleMcp, deleteMcp } from "./lib/patch.mjs";
 
 export const name = "dsh-plugin-manager";
 export const inject = ["webServer"];
 
 const HOME = homedir();
-const PATCH_FILE = join(HOME, ".dsh/profiles/web/cordis.patch.yml");
-const SKILLS_DIR = join(HOME, ".dsh/skills");
-const PLUGINS_DIR = join(HOME, ".dsh/profiles/node_modules/@deepseek-ai");
-
-/* ---------------- cordis.patch.yml 行级解析 ---------------- */
-
-function parseMcpEntries(text) {
-  const lines = text.split("\n");
-  const entries = [];
-  let cur = null;
-  for (let i = 0; i < lines.length; i++) {
-    const ln = lines[i];
-    const m = ln.match(/^    - id: (\S+)\s*$/);
-    if (m) {
-      if (cur) { cur.end = i; entries.push(cur); }
-      cur = { id: m[1], start: i, end: lines.length, disabled: false };
-      continue;
-    }
-    if (cur) {
-      if (/^-\s/.test(ln) || (ln && !/^\s/.test(ln))) {
-        cur.end = i; entries.push(cur); cur = null; continue;
-      }
-      if (/^\s+disabled:\s*true\s*$/.test(ln)) { cur.disabled = true; cur.disabledLine = i; }
-      for (const key of ["serverName", "transport", "command"]) {
-        const mm = ln.match(new RegExp("^\\s+" + key + ":\\s*(.+?)\\s*$"));
-        if (mm && !(key in cur)) cur[key] = mm[1].replace(/^['"]|['"]$/g, "");
-      }
-      const mu = ln.match(/^\s+url:\s*(.+?)\s*$/);
-      if (mu && !("url" in cur)) cur.url = mu[1].length > 90 ? mu[1].slice(0, 90) + "…" : mu[1];
-    }
-  }
-  if (cur) entries.push(cur);
-  return entries;
-}
-
-function backup() {
-  const ts = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
-  copyFileSync(PATCH_FILE, PATCH_FILE + ".bak-" + ts);
-}
-
-function toggleMcp(id, disable) {
-  const text = readFileSync(PATCH_FILE, "utf8");
-  const e = parseMcpEntries(text).find((x) => x.id === id);
-  if (!e) return [false, "找不到插件: " + id];
-  if (e.disabled === disable) return [true, "状态未变化"];
-  backup();
-  const lines = text.split("\n");
-  if (disable) lines.splice(e.start + 1, 0, "      disabled: true");
-  else lines.splice(e.disabledLine, 1);
-  writeFileSync(PATCH_FILE, lines.join("\n"));
-  return [true, "已" + (disable ? "禁用" : "启用") + " " + id + "(热生效)"];
-}
-
-function deleteMcp(id) {
-  const text = readFileSync(PATCH_FILE, "utf8");
-  const e = parseMcpEntries(text).find((x) => x.id === id);
-  if (!e) return [false, "找不到插件: " + id];
-  backup();
-  const lines = text.split("\n");
-  lines.splice(e.start, e.end - e.start);
-  writeFileSync(PATCH_FILE, lines.join("\n"));
-  return [true, "已删除 " + id + "(热生效;配置块上方的注释行会保留)"];
-}
+const DSH_HOME = process.env.DSH_HOME || join(HOME, ".dsh");
+const SKILLS_DIR = join(DSH_HOME, "skills");
+const PLUGINS_DIR = join(DSH_HOME, "profiles/node_modules/@deepseek-ai");
 
 /* ---------------- skills / plugins ---------------- */
 
@@ -107,10 +50,10 @@ function deleteSkill(name) {
   if (!/^[\w.\-]+$/.test(name)) return [false, "非法名称"];
   const d = join(SKILLS_DIR, name);
   if (!existsSync(d)) return [false, "找不到 skill: " + name];
-  const ts = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+  const ts = new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 17);
   const trash = join(SKILLS_DIR, ".trash-" + ts + "-" + name);
   renameSync(d, trash); // 不真删,可恢复
-  return [true, "已移除 " + name + "(移入 " + trash.split("/").pop() + ",可手动恢复)"];
+  return [true, "已移除 " + name + "(移入 " + trash.split(/[\\/]/).pop() + ",可手动恢复)"];
 }
 
 function listPlugins() {
@@ -127,9 +70,12 @@ function listPlugins() {
 }
 
 function getState() {
-  const entries = parseMcpEntries(readFileSync(PATCH_FILE, "utf8"));
-  for (const e of entries) { delete e.start; delete e.end; delete e.disabledLine; }
-  return { mcp: entries, skills: listSkills(), plugins: listPlugins(), patchFile: PATCH_FILE, skillsDir: SKILLS_DIR };
+  const file = patchFile();
+  let mcp = [];
+  if (existsSync(file)) {
+    mcp = collectMcp(readFileSync(file, "utf8")).mcp.map(({ _inst, _ov, ...rest }) => rest);
+  }
+  return { mcp, skills: listSkills(), plugins: listPlugins(), patchFile: file, skillsDir: SKILLS_DIR };
 }
 
 /* ---------------- HTTP ---------------- */

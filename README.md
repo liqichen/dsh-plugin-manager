@@ -5,8 +5,8 @@
 **dsh-plugin-manager** — 在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 设置面板里内嵌的图形化管理器,让你像操作普通 App 一样管理 **MCP 服务 / Skills / 内置插件包**,开关、删除实时热生效,**无需重启 dsh web**。
 
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![DeepSeek Harness](https://img.shields.io/badge/DSH-web%20plugin-4f8cff)
 
 </div>
@@ -19,6 +19,7 @@
 - [📸 界面预览](#-界面预览)
 - [🚀 安装](#-安装)
 - [🖥️ 使用说明](#️-使用说明)
+- [🆕 0.2.0 alpha.1 适配](#-020-alpha1-适配)
 - [⚙️ 工作原理](#️-工作原理)
 - [📡 API 参考](#-api-参考)
 - [🗂️ 目录结构](#️-目录结构)
@@ -32,8 +33,8 @@
 
 | 能力 | 说明 | 生效方式 |
 |---|---|---|
-| 🎛️ **MCP 开关** | 一键禁用/启用任意 MCP 服务(写入 `disabled: true` 或移除) | **实时热生效**,无需重启 |
-| 🗑️ **MCP 删除** | 从 `cordis.patch.yml` 删除整个 MCP 条目(上方注释保留) | **实时热生效**,无需重启 |
+| 🎛️ **MCP 开关** | 一键禁用/启用任意 MCP 服务(追加/更新 `disabled: true` override patch,不碰原条目) | **实时热生效**,无需重启 |
+| 🗑️ **MCP 删除** | 从 patch 文件删除整个 MCP 条目(含其 override,上方注释保留) | **实时热生效**,无需重启 |
 | 📚 **Skills 管理** | 浏览全部 skill 及描述;删除 = 移入 `.trash-*` 目录,**可恢复** | 立即生效 |
 | 📦 **插件包浏览** | 只读查看 DSH 本体 160+ 内置插件包的名称/版本/说明 | 只读 |
 | 🛡️ **自动备份** | 每次写操作前自动备份配置为 `cordis.patch.yml.bak-<时间戳>` | — |
@@ -61,21 +62,24 @@
 # 1. 克隆并放入用户插件目录
 git clone https://github.com/liqichen/dsh-plugin-manager.git
 mkdir -p ~/.dsh/plugins/dsh-plugin-manager
-cp -r dsh-plugin-manager/{index.js,client.js,package.json} ~/.dsh/plugins/dsh-plugin-manager/
+cp -r dsh-plugin-manager/{index.js,client.js,lib,package.json,cordis.patch.yml} ~/.dsh/plugins/dsh-plugin-manager/
 
-# 2. 通过 dsh CLI 注册插件
+# 2. 通过 dsh CLI 注册插件(依赖安装走 pnpm,Node 端即可解析)
 dsh plugin --profile web add ~/.dsh/plugins/dsh-plugin-manager
 
-# 3. 声明依赖(让 Node 端可解析)
-#    编辑 ~/.dsh/profiles/web/package.json,dependencies 加入:
-#    "dsh-plugin-manager": "file:../../plugins/dsh-plugin-manager"
-
-# 4. 在 ~/.dsh/profiles/web/cordis.patch.yml 的 plugins 列表加入:
-#    - id: plugin-manager-ui
-#      name: dsh-plugin-manager
-
-# 5. 重启 dsh web,打开「设置」→「插件管理」即可使用
+# 3. 重启 dsh web,打开「设置」→「插件管理」即可使用
 ```
+
+> **alpha.1 不需要手动加插件条目**:`dsh plugin add` 后,插件的 bundle patch
+> (`package.json` 的 `dsh.bundle.patch` → `cordis.patch.yml`)会自动成为 profile 的
+> patch 层并注册「插件管理」设置页。若再在用户 patch 里手动追加同名条目,会触发
+> `duplicate loader entry id` 启动失败。
+>
+> **patch 文件位置**:插件探测 `$DSH_HOME/profiles/<当前profile>/cordis.patch.yml`
+> (当前 profile 用户层,优先)与 `$DSH_HOME/cordis.patch.yml`(home 用户层,机器级)。
+> alpha.1 的 patch 文件必须是「顶层 YAML 数组的 loader patch entries」(`- insert:`
+> 操作符 / id-targeted override),不能像 rc.2 时代那样直接写 `- id:` + `name` 条目
+> (非 insert patch 只覆盖已存在行,会被 loader 跳过并告警)。
 
 ### 方式二:legacy 独立网页版(不依赖插件系统)
 
@@ -108,6 +112,33 @@ python3 legacy/server.py --port 17891
 
 ---
 
+## 🆕 0.2.0 alpha.1 适配
+
+v0.1.0 针对 rc.2 时代的 `~/.dsh/profiles/web/cordis.patch.yml` 布局,在 **0.1.2-alpha.1**
+上 MCP 页会直接 500(文件不存在)。v0.2.0 做了以下适配:
+
+1. **动态定位 patch 文件**:优先当前 profile 用户层(`$DSH_HOME/profiles/<profile>/cordis.patch.yml`,
+   从进程 argv 反推 profile),其次 home 用户层(`$DSH_HOME/cordis.patch.yml`,alpha.1 新增的
+   机器级层);文件不存在时 MCP 列表返回空,不再 500。
+2. **重写 MCP 解析器**(`lib/patch.mjs`):识别 alpha.1 官方写法 —— `- insert:` 操作符里的
+   `dsh-mcp-client` 实例 + 独立的 id-targeted override(禁用),两者按 id 合并;
+   同时兼容显示 rc.2 时代的直接条目(便于清理无效配置)。
+3. **开关语义对齐合成树**:禁用 = 追加/更新 `- id: xxx / disabled: true` override patch
+   (不动原条目);启用 = 删除 override + 实例内 disabled 行。与 `dsh --dump-config` 的
+   合成结果完全一致,已用 `node --test` 8 项单测覆盖。
+4. **健壮性**:后端 500/结构异常时前端显示错误卡而非渲染崩溃;备份时间戳精确到毫秒。
+5. **实测**:在 0.1.2-alpha.1(Windows, node v24)上安装验证,`/plugin-manager/api/*` 全流程
+   state → toggle → delete 通过,改动经宿主 HMR 实时热生效。
+
+```bash
+npm test   # node --test tests/patch.test.mjs(零依赖)
+```
+
+> 注意:alpha.1 的 web 设置面板已内置「插件」管理页(`dsh-client-ui-settings-plugins`),
+> 本插件聚焦 MCP 开关/删除与 Skills 回收站,与其互补。
+
+---
+
 ## ⚙️ 工作原理
 
 本插件是标准 **DSH 双端插件**,随 dsh web 一同启动,无需独立进程:
@@ -120,8 +151,11 @@ python3 legacy/server.py --port 17891
 │  │ 设置面板「插件管理」页 │   fetch    │ 注册 /plugin-manager/   │  │
 │  │ React UI · 同源 API   │ ─────────▶ │ api/* 路由(内嵌后端)     │  │
 │  └───────────────────────┘            │ 读 / 写:                │  │
-│                                       │  · ~/.dsh/profiles/web/ │  │
-│                                       │    cordis.patch.yml     │  │
+│                                       │  · patch 文件(自动探测)  │  │
+│                                       │    $DSH_HOME/profiles/   │  │
+│                                       │    web/cordis.patch.yml  │  │
+│                                       │    $DSH_HOME/cordis.     │  │
+│                                       │    patch.yml(home 层)    │  │
 │                                       │  · ~/.dsh/skills/       │  │
 │                                       │  · ~/.dsh/profiles/     │  │
 │                                       │    node_modules/@deep-  │  │
@@ -134,7 +168,8 @@ python3 legacy/server.py --port 17891
 
 | 路径 | 作用 |
 |---|---|
-| `~/.dsh/profiles/web/cordis.patch.yml` | MCP 服务配置(补丁层),修改后宿主 HMR 热生效 |
+| `$DSH_HOME/profiles/web/cordis.patch.yml` | web profile 用户层(优先),MCP 服务配置,修改后宿主 HMR 热生效 |
+| `$DSH_HOME/cordis.patch.yml` | home 用户层(alpha.1 机器级,跨 profile),存在时插件会优先读取 |
 | `~/.dsh/skills/` | Skill 目录,删除时重命名为 `.trash-<时间戳>-<名称>` |
 | `~/.dsh/profiles/node_modules/@deepseek-ai/` | DSH 本体插件包(只读) |
 
@@ -192,6 +227,10 @@ python3 legacy/server.py --port 17891
 dsh-plugin-manager/
 ├── index.js          # Node 半:内嵌后端,注册 /plugin-manager/api/* 路由
 ├── client.js         # 浏览器半:设置面板「插件管理」React UI
+├── lib/
+│   └── patch.mjs     # patch 文件定位 / MCP 解析 / 写操作(alpha.1 适配核心)
+├── tests/
+│   └── patch.test.mjs# node --test 单元测试(零依赖)
 ├── package.json      # DSH 双端插件元数据(dsh.client.inject 声明宿主依赖)
 ├── docs/
 │   └── screenshots/  # 界面截图
@@ -212,7 +251,7 @@ dsh-plugin-manager/
 配置改动是热生效的,但**当前已打开的会话**仍持有旧的工具列表,请新开一个会话。
 
 **Q: 删掉的 MCP 怎么恢复?**
-`mcp-delete` 只删除配置条目,不会卸载 npm 包。用最近的备份 `cordis.patch.yml.bak-*` 恢复,或手动把条目加回 `cordis.patch.yml` 即可。
+`mcp-delete` 只删除配置条目,不会卸载 npm 包。用最近的备份 `cordis.patch.yml.bak-*` 恢复,或手动把条目加回 patch 文件(用 `- insert:` 格式)即可。
 
 **Q: 删掉的 Skill 怎么恢复?**
 把 `~/.dsh/skills/.trash-<时间戳>-<名称>` 重命名回 `~/.dsh/skills/<名称>` 即可。
@@ -227,11 +266,11 @@ dsh-plugin-manager/
 
 ## ⚠️ 注意事项
 
-1. **操作的是真实配置** —— 所有改动直接写 `cordis.patch.yml` 与 `~/.dsh/skills/`。每次写前自动备份,出问题可用最近的 `.bak-*` 恢复。
+1. **操作的是真实配置** —— 所有改动直接写探测到的 patch 文件与 `~/.dsh/skills/`。每次写前自动备份,出问题可用最近的 `.bak-*` 恢复。
 2. **MCP 删除 ≠ 卸载包** —— 只删配置条目,包体仍在,重新配置即可恢复。
 3. **Skill 删除可恢复** —— 是「移入 `.trash-*`」而非真删。
 4. **热生效有边界** —— 配置实时生效,但已开会话的工具列表不自动刷新,请开新会话。
-5. **只作用于当前 profile** —— 默认管理 `~/.dsh/profiles/web/`,其他 profile 需相应调整路径。
+5. **作用于当前 profile 与 home 层** —— 探测 `$DSH_HOME/profiles/<当前profile>/cordis.patch.yml` 与 `$DSH_HOME/cordis.patch.yml`(存在者优先);home 层改动会影响所有 profile。
 
 ---
 
