@@ -1,3 +1,12 @@
+> [!WARNING]
+> **⚠️ 本项目已归档停止维护 (Archived)**
+> DeepSeek Harness 自 v0.1.6 起内置插件管理页（安装 / 配置 / 启停 / 运行时卸载 / 镜像源），本插件功能已由官方原生能力覆盖，故停止维护并归档。感谢大家的支持。
+>
+> **Deprecated:** DSH ≥ v0.1.6 ships a built-in plugin management page (install / config / enable / runtime uninstall / mirror sources). This plugin is superseded and archived.
+> Official: https://github.com/deepseek-ai/deepseek-harness
+
+---
+
 <div align="center">
 
 # 🧩 DSH 插件管理器
